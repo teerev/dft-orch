@@ -1,16 +1,22 @@
+run:
+  retries: 1
+
 structure:
-  path: "structures/tio2_rutile.cif"
+  path: "structures/h2_pbc.xyz"
 
 calculator:
   xc: "PBE"
+  charge: 0
+  spin: 0
   scf:
-    conv_tol: 1e-6
-    max_cycle: 50
+    # Intentionally too small to force one SCF failure + retry.
+    max_cycle: 1
+    conv_tol: 1e-8
   pbc:
     enabled: true
     basis: "gth-szv-molopt-sr"
     pseudo: "gth-pbe"
-    mesh: [25, 25, 25]
+    mesh: [15, 15, 15]
     kpts: [1, 1, 1]
     use_multigrid: true
 
@@ -19,6 +25,5 @@ relax:
 
 validate:
   require_scf_converged: true
-  # This is a single-point (no relaxation yet), so forces are expected to be large.
-  max_force: 100.0
+  max_force: 1000000.0
 

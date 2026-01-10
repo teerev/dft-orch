@@ -41,3 +41,9 @@ def stable_json_dumps(obj: Any) -> str:
 def short_hash_from_obj(obj: Any, *, length: int = 10) -> str:
     raw = stable_json_dumps(obj).encode("utf-8")
     return sha256_bytes(raw)[:length]
+
+
+def sha256_from_obj(obj: Any) -> str:
+    """Stable sha256 hexdigest of a JSON-serializable object."""
+    raw = stable_json_dumps(obj).encode("utf-8")
+    return sha256_bytes(raw)

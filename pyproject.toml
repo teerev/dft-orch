@@ -5,8 +5,10 @@ description = "Deterministic LangGraph-based DFT workflow orchestration (learnin
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+  "ase>=3.23.0",
   "langgraph>=0.2.0",
   "pydantic>=2.6.0",
+  "pyscf>=2.5.0",
   "PyYAML>=6.0.1",
 ]
 
@@ -18,8 +20,6 @@ dev = [
 ]
 # DFT stack is optional until milestone 3+ to keep installs light.
 dft = [
-  "ase>=3.23.0",
-  "pyscf>=2.5.0",
 ]
 
 [build-system]

@@ -58,10 +58,16 @@ def cmd_run(args: argparse.Namespace, argv: list[str]) -> int:
 
     passed = validation.get("passed")
     energy = calc.get("energy_eV")
+    scf_converged = calc.get("scf_converged")
+    scf_iterations = calc.get("scf_iterations")
     max_force = validation.get("max_force")
 
     print(f"run_dir: {run_dir}")
     print(f"passed: {passed}")
+    if scf_converged is not None:
+        print(f"scf_converged: {scf_converged}")
+    if scf_iterations is not None:
+        print(f"scf_iterations: {scf_iterations}")
     if energy is not None:
         print(f"energy_eV: {energy}")
     if max_force is not None:

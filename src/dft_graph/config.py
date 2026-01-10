@@ -57,6 +57,26 @@ class SCFConfig(BaseModel):
     max_cycle: int = Field(default=50, ge=1)
 
 
+class PBCConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # None -> auto (use PBC if structure indicates periodicity)
+    enabled: bool | None = Field(default=None)
+
+    # Defaults chosen for "toy but works" gamma-point solids in PySCF PBC.
+    basis: str = Field(default="gth-szv-molopt-sr")
+    pseudo: str | None = Field(default="gth-pbe")
+
+    # FFT mesh used by PBC DFT. Keep modest to avoid huge memory allocations.
+    mesh: list[int] = Field(default_factory=lambda: [25, 25, 25])
+
+    # Gamma-only for now; k-point meshes can be added later without changing interfaces.
+    kpts: list[int] = Field(default_factory=lambda: [1, 1, 1])
+
+    # Required for nuclear gradients in PySCF PBC RKS.
+    use_multigrid: bool = Field(default=True)
+
+
 class CalculatorConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -67,6 +87,7 @@ class CalculatorConfig(BaseModel):
     charge: int = Field(default=0)
     spin: int = Field(default=0)
     scf: SCFConfig = Field(default_factory=SCFConfig)
+    pbc: PBCConfig = Field(default_factory=PBCConfig)
 
 
 class RunConfig(BaseModel):
@@ -75,6 +96,7 @@ class RunConfig(BaseModel):
     runs_dir: str = Field(default="runs")
     precision_digits: int = Field(default=8, ge=0, le=16)
     run_name: str | None = Field(default=None)
+    retries: int = Field(default=1, ge=0, le=2)
 
 
 class StructureConfig(BaseModel):

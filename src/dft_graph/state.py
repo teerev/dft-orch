@@ -10,17 +10,34 @@ class RetryState(TypedDict, total=False):
 
 
 class CalcResults(TypedDict, total=False):
+    backend: str | None
+    method: str | None
+    xc: str | None
+    basis: str | None
+    charge: int | None
+    spin: int | None
     energy_eV: float | None
     forces_eV_per_A: list[list[float]] | None
     scf_converged: bool | None
     scf_iterations: int | None
     walltime_s: float | None
+    error: str | None
 
 
 class ValidationResults(TypedDict, total=False):
     passed: bool
     reasons: list[str]
     max_force: float | None
+
+
+class RelaxationResults(TypedDict, total=False):
+    enabled: bool
+    optimizer: str | None
+    fmax: float | None
+    steps: int | None
+    steps_taken: int | None
+    trajectory_path: str | None
+    final_structure_path: str | None
 
 
 class WorkflowState(TypedDict, total=False):
@@ -33,6 +50,7 @@ class WorkflowState(TypedDict, total=False):
     cli_argv: NotRequired[list[str]]
 
     # ---- Resolved config
+    project_root: str
     resolved_config: dict[str, Any]
     config_sources: dict[str, Any]
     config_hash: str
@@ -45,11 +63,15 @@ class WorkflowState(TypedDict, total=False):
 
     # ---- Structure provenance (milestone 1+2)
     structure_path: str | None
+    structure_resolved_path: str | None
     structure_input_hash: str | None
     structure_input_copied_path: str | None
     structure_hash: str | None  # canonical structure hash (milestone 2)
+    structure_canonical_path: str | None
+    structure: dict[str, Any] | None
 
     # ---- Calculation + validation (milestone 3+)
     calculation: CalcResults
+    relaxation: RelaxationResults
     validation: ValidationResults
     retry: RetryState

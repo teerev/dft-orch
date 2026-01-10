@@ -2,6 +2,7 @@ run:
   runs_dir: "runs"
   precision_digits: 8
   run_name: null
+  retries: 1
 
 structure:
   path: null
@@ -16,6 +17,13 @@ calculator:
   scf:
     conv_tol: 1e-8
     max_cycle: 50
+  pbc:
+    enabled: null    # null => auto (use PBC if structure indicates periodicity)
+    basis: "gth-szv-molopt-sr"
+    pseudo: "gth-pbe"
+    mesh: [25, 25, 25]
+    kpts: [1, 1, 1]
+    use_multigrid: true
 
 relax:
   enabled: true

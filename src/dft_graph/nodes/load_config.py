@@ -60,11 +60,39 @@ def load_config(state: WorkflowState) -> WorkflowState:
     resolved_config = resolved.resolved
     state["resolved_config"] = resolved_config
     state["config_sources"] = resolved.sources
+    state["project_root"] = str(resolved.project_root)
+
+    # Retry bookkeeping (Milestone 5): default retries comes from config.
+    retries = int(resolved_config.get("run", {}).get("retries", 0))
+    state["retry"] = {
+        "retries_remaining": retries,
+        "retries_used": 0,
+        "history": [],
+    }
+
+    # ---- Structure config (resolved path + input hash)
+    structure_path_cfg = resolved_config["structure"].get("path")
+    state["structure_path"] = None if structure_path_cfg is None else str(structure_path_cfg)
+    state["structure_resolved_path"] = None
+    state["structure_input_hash"] = None
+    state["structure_input_copied_path"] = None
+    state["structure_canonical_path"] = None
+    state["structure"] = None
+    state["structure_hash"] = None
+
+    structure_src: Path | None = None
+    if structure_path_cfg:
+        candidate = _resolve_maybe_relative(structure_path_cfg, project_root=resolved.project_root)
+        state["structure_resolved_path"] = str(candidate)
+        structure_src = candidate
+        if candidate.exists() and candidate.is_file():
+            state["structure_input_hash"] = sha256_file(candidate)[:16]
 
     # ---- Hash (used in run_id)
     config_hash = short_hash_from_obj(
         {
             "resolved_config": resolved_config,
+            "structure_input_hash": state.get("structure_input_hash"),
         },
         length=10,
     )
@@ -110,25 +138,21 @@ def load_config(state: WorkflowState) -> WorkflowState:
         runs_dir=str(runs_dir),
     )
 
-    # ---- Structure input copy (best-effort; canonical handling comes in milestone 2)
-    structure_path_cfg = resolved_config["structure"].get("path")
-    state["structure_path"] = None if structure_path_cfg is None else str(structure_path_cfg)
-    state["structure_input_hash"] = None
-    state["structure_input_copied_path"] = None
-
-    if structure_path_cfg:
-        src = _resolve_maybe_relative(structure_path_cfg, project_root=resolved.project_root)
-        if src.exists() and src.is_file():
-            dest = input_dir / f"structure{src.suffix or ''}"
-            shutil.copy2(src, dest)
+    # ---- Structure input copy (copy original into run_dir/input/)
+    if structure_src is not None:
+        if structure_src.exists() and structure_src.is_file():
+            dest = input_dir / f"structure{structure_src.suffix or ''}"
+            shutil.copy2(structure_src, dest)
             state["structure_input_copied_path"] = str(dest)
-            state["structure_input_hash"] = sha256_file(dest)[:16]
+            # Ensure input hash is set (prefer original bytes; fall back to copied file).
+            if state.get("structure_input_hash") is None:
+                state["structure_input_hash"] = sha256_file(dest)[:16]
             log_event(
                 log_path,
                 node=NODE,
                 event="info",
                 message="Copied structure input",
-                structure_src=str(src),
+                structure_src=str(structure_src),
                 structure_dest=str(dest),
                 structure_input_hash=state["structure_input_hash"],
             )
@@ -138,7 +162,7 @@ def load_config(state: WorkflowState) -> WorkflowState:
                 node=NODE,
                 event="error",
                 message="Structure path does not exist (skipping copy)",
-                structure_src=str(src),
+                structure_src=str(structure_src),
             )
 
     # ---- Write early artifacts
@@ -163,6 +187,7 @@ def load_config(state: WorkflowState) -> WorkflowState:
         "resolved_config": resolved_config,
         "structure": {
             "path": structure_path_cfg,
+            "resolved_path": state.get("structure_resolved_path"),
             "input_hash": state.get("structure_input_hash"),
             "copied_path": state.get("structure_input_copied_path"),
         },
@@ -173,9 +198,11 @@ def load_config(state: WorkflowState) -> WorkflowState:
         },
         "packages": {
             "dft-orch": _pkg_version("dft-orch"),
+            "ase": _pkg_version("ase"),
             "langgraph": _pkg_version("langgraph"),
             "pydantic": _pkg_version("pydantic"),
             "PyYAML": _pkg_version("PyYAML"),
+            "pyscf": _pkg_version("pyscf"),
         },
     }
     write_json(manifest_path, manifest)

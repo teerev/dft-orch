@@ -38,14 +38,14 @@ python -m pip install -r requirements-dev.txt
 ### Run
 
 ```bash
-python -m dft_graph run --material tio2_rutile
+python -m dft_graph run --material h2
 ```
 
 Useful overrides:
 
 ```bash
-python -m dft_graph run --material tio2_rutile --runs-dir runs --run-name demo
-python -m dft_graph run --material tio2_rutile --structure structures/h2.xyz
+python -m dft_graph run --material h2 --runs-dir runs --run-name demo
+python -m dft_graph run --material h2 --structure structures/h2.xyz
 ```
 
 ### Lint / format
@@ -79,5 +79,6 @@ runs/<timestamp>_<material>_<hash>_<gitsha?>_<run_name?>/
 ## Milestones (tracked in code)
 
 - **Milestone 0–1 (implemented)**: repo skeleton + config system + deterministic run dirs + manifest/log/summary/report + graph scaffolding.
-- **Milestone 2 (next)**: structure loading (ASE) + canonical structure hashing.
-- **Milestone 3+**: minimal PySCF energy/forces, relaxation, validation, conditional retry.
+- **Milestone 2 (implemented)**: structure loading (ASE) + canonical structure hashing.
+- **Milestone 3 (implemented)**: minimal PySCF single-point energy + forces (molecular, no PBC yet).
+- **Milestone 4+**: relaxation, stricter validation, conditional retry.

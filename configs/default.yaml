@@ -1,0 +1,32 @@
+run:
+  runs_dir: "runs"
+  precision_digits: 8
+  run_name: null
+
+structure:
+  path: null
+
+calculator:
+  backend: "pyscf"
+  method: "dft"
+  xc: "PBE"
+  basis: "def2-svp"
+  charge: 0
+  spin: 0
+  scf:
+    conv_tol: 1e-8
+    max_cycle: 50
+
+relax:
+  enabled: true
+  optimizer: "BFGS"
+  fmax: 0.05
+  steps: 200
+
+validate:
+  require_scf_converged: true
+  max_force: 0.05
+
+output:
+  write_trajectory: true
+

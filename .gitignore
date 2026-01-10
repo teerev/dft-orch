@@ -1,3 +1,16 @@
+.DS_Store
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# runtime artifacts
+runs/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

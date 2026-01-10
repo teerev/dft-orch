@@ -1,0 +1,9 @@
+structure:
+  path: "structures/tio2_rutile.cif"
+
+calculator:
+  xc: "PBE"
+
+relax:
+  enabled: true
+

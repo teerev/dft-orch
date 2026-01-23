@@ -1,7 +1,0 @@
-# Runtime dependencies (source of truth is also in pyproject.toml).
-langgraph>=0.2.0
-pydantic>=2.6.0
-PyYAML>=6.0.1
-ase>=3.23.0
-pyscf>=2.5.0
-

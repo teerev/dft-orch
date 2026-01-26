@@ -1,88 +1,93 @@
 from __future__ import annotations
 
-from dataclasses import asdict
-from datetime import datetime
 import json
 import os
-from pathlib import Path
-from typing import Dict, List, Optional
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
-from .models import Task
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
 
 
-class TaskStorage:
-    def __init__(self, path: Optional[str] = None) -> None:
-        self.path = Path(path).expanduser() if path else Path("~/.taskman/tasks.json").expanduser()
-        self.tasks: Dict[str, Task] = {}
+def _default_data() -> Dict[str, Any]:
+    return {"tasks": []}
 
-    def _ensure_dir(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
 
-    def _serialize_task(self, task: Task) -> Dict:
-        data = asdict(task)
-        data["created_at"] = task.created_at.isoformat()
+def _load(path: str) -> Dict[str, Any]:
+    if not os.path.exists(path):
+        return _default_data()
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict) or "tasks" not in data or not isinstance(data["tasks"], list):
+            return _default_data()
         return data
+    except (OSError, json.JSONDecodeError):
+        return _default_data()
 
-    def _deserialize_task(self, data: Dict) -> Task:
-        created_at_raw = data.get("created_at")
-        if isinstance(created_at_raw, str):
-            created_at = datetime.fromisoformat(created_at_raw)
-        else:
-            raise ValueError("Invalid created_at in storage")
 
-        return Task(
-            id=str(data["id"]),
-            title=str(data["title"]),
-            description=str(data.get("description", "")),
-            completed=bool(data.get("completed", False)),
-            created_at=created_at,
-            priority=str(data.get("priority", "medium")),
-        )
+def _save(path: str, data: Dict[str, Any]) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, sort_keys=True)
+        f.write("\n")
+    os.replace(tmp, path)
 
-    def load(self) -> None:
-        self._ensure_dir()
-        if not self.path.exists():
-            self.tasks = {}
-            return
 
-        with self.path.open("r", encoding="utf-8") as f:
-            payload = json.load(f)
+def default_store_path() -> str:
+    env = os.environ.get("TASKMAN_STORE")
+    if env:
+        return env
+    return os.path.join(os.getcwd(), ".taskman", "tasks.json")
 
-        items = payload.get("tasks", []) if isinstance(payload, dict) else payload
-        self.tasks = {}
-        if items:
-            for item in items:
-                task = self._deserialize_task(item)
-                self.tasks[task.id] = task
 
-    def save(self) -> None:
-        self._ensure_dir()
-        tmp_path = self.path.with_suffix(self.path.suffix + ".tmp")
-        data = {
-            "tasks": [self._serialize_task(t) for t in self.list_all()],
-        }
-        with tmp_path.open("w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, sort_keys=True)
-            f.write("\n")
-        os.replace(tmp_path, self.path)
+def add_task(
+    title: str,
+    description: Optional[str] = None,
+    priority: str = "medium",
+    store_path: Optional[str] = None,
+) -> str:
+    sp = store_path or default_store_path()
+    data = _load(sp)
 
-    def add(self, task: Task) -> None:
-        if task.id in self.tasks:
-            raise KeyError(f"Task with id {task.id} already exists")
-        self.tasks[task.id] = task
+    task_id = uuid4().hex
+    task = {
+        "id": task_id,
+        "title": title,
+        "description": description or "",
+        "priority": priority,
+        "status": "pending",
+        "created": _now_iso(),
+        "completed": None,
+    }
+    data["tasks"].append(task)
+    _save(sp, data)
+    return task_id
 
-    def get(self, task_id: str) -> Optional[Task]:
-        return self.tasks.get(task_id)
 
-    def list_all(self) -> List[Task]:
-        return sorted(self.tasks.values(), key=lambda t: t.created_at)
+def list_tasks(
+    *,
+    show_all: bool = False,
+    completed_only: bool = False,
+    pending_only: bool = False,
+    store_path: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    sp = store_path or default_store_path()
+    data = _load(sp)
+    tasks: List[Dict[str, Any]] = list(data.get("tasks", []))
 
-    def update(self, task: Task) -> None:
-        if task.id not in self.tasks:
-            raise KeyError(f"Task with id {task.id} does not exist")
-        self.tasks[task.id] = task
+    if show_all:
+        return tasks
 
-    def delete(self, task_id: str) -> None:
-        if task_id not in self.tasks:
-            raise KeyError(f"Task with id {task_id} does not exist")
-        del self.tasks[task_id]
+    if completed_only and pending_only:
+        return tasks
+
+    if completed_only:
+        return [t for t in tasks if t.get("status") == "completed"]
+    if pending_only or (not completed_only and not pending_only):
+        return [t for t in tasks if t.get("status") != "completed"]
+
+    return tasks

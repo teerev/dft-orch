@@ -1,4 +1,3 @@
-from .models import Task
-from .storage import TaskStorage
+__all__ = ["__version__"]
 
-__all__ = ["Task", "TaskStorage"]
+__version__ = "0.1.0"

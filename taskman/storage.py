@@ -2,92 +2,112 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
-from uuid import uuid4
+import uuid
+from dataclasses import asdict
+from pathlib import Path
+from typing import List, Optional
+
+from .models import Task
 
 
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).date().isoformat()
+class StorageError(Exception):
+    """Base storage error."""
 
 
-def _default_data() -> Dict[str, Any]:
-    return {"tasks": []}
+class TaskNotFoundError(StorageError):
+    """Raised when a task cannot be found."""
 
 
-def _load(path: str) -> Dict[str, Any]:
-    if not os.path.exists(path):
-        return _default_data()
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        if not isinstance(data, dict) or "tasks" not in data or not isinstance(data["tasks"], list):
-            return _default_data()
-        return data
-    except (OSError, json.JSONDecodeError):
-        return _default_data()
+class AmbiguousTaskIdError(StorageError):
+    """Raised when a partial task id matches more than one task."""
 
 
-def _save(path: str, data: Dict[str, Any]) -> None:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, sort_keys=True)
-        f.write("\n")
-    os.replace(tmp, path)
+_DEFAULT_DIR = Path(os.environ.get("TASKMAN_HOME", Path.home() / ".taskman"))
+_DEFAULT_PATH = _DEFAULT_DIR / "tasks.json"
 
 
-def default_store_path() -> str:
-    env = os.environ.get("TASKMAN_STORE")
-    if env:
-        return env
-    return os.path.join(os.getcwd(), ".taskman", "tasks.json")
+def _ensure_parent(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
 
 
-def add_task(
-    title: str,
-    description: Optional[str] = None,
-    priority: str = "medium",
-    store_path: Optional[str] = None,
-) -> str:
-    sp = store_path or default_store_path()
-    data = _load(sp)
-
-    task_id = uuid4().hex
-    task = {
-        "id": task_id,
-        "title": title,
-        "description": description or "",
-        "priority": priority,
-        "status": "pending",
-        "created": _now_iso(),
-        "completed": None,
-    }
-    data["tasks"].append(task)
-    _save(sp, data)
-    return task_id
-
-
-def list_tasks(
-    *,
-    show_all: bool = False,
-    completed_only: bool = False,
-    pending_only: bool = False,
-    store_path: Optional[str] = None,
-) -> List[Dict[str, Any]]:
-    sp = store_path or default_store_path()
-    data = _load(sp)
-    tasks: List[Dict[str, Any]] = list(data.get("tasks", []))
-
-    if show_all:
-        return tasks
-
-    if completed_only and pending_only:
-        return tasks
-
-    if completed_only:
-        return [t for t in tasks if t.get("status") == "completed"]
-    if pending_only or (not completed_only and not pending_only):
-        return [t for t in tasks if t.get("status") != "completed"]
-
+def _load_tasks(path: Path = _DEFAULT_PATH) -> List[Task]:
+    if not path.exists():
+        return []
+    with path.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+    tasks: List[Task] = []
+    for item in data or []:
+        tasks.append(Task(**item))
     return tasks
+
+
+def _save_tasks(tasks: List[Task], path: Path = _DEFAULT_PATH) -> None:
+    _ensure_parent(path)
+    with path.open("w", encoding="utf-8") as f:
+        json.dump([asdict(t) for t in tasks], f, indent=2, ensure_ascii=False)
+
+
+def list_tasks(path: Path = _DEFAULT_PATH) -> List[Task]:
+    return _load_tasks(path)
+
+
+def add_task(title: str, path: Path = _DEFAULT_PATH) -> Task:
+    tasks = _load_tasks(path)
+    t = Task(id=uuid.uuid4().hex, title=title, completed=False)
+    tasks.append(t)
+    _save_tasks(tasks, path)
+    return t
+
+
+def find_by_id(task_id: str, path: Path = _DEFAULT_PATH) -> Optional[Task]:
+    tasks = _load_tasks(path)
+    for t in tasks:
+        if t.id == task_id:
+            return t
+    return None
+
+
+def find_by_partial_id(partial_id: str, path: Path = _DEFAULT_PATH) -> Task | None:
+    """Resolve a task by partial id.
+
+    Returns:
+        The matching task if exactly one matches, or None if none match.
+
+    Raises:
+        AmbiguousTaskIdError: if more than one task matches the partial id.
+    """
+    partial = (partial_id or "").strip()
+    if not partial:
+        return None
+
+    tasks = _load_tasks(path)
+    matches = [t for t in tasks if t.id.startswith(partial)]
+    if not matches:
+        return None
+    if len(matches) > 1:
+        raise AmbiguousTaskIdError(
+            f"Ambiguous task id '{partial_id}': matches {len(matches)} tasks"
+        )
+    return matches[0]
+
+
+def complete_task(task: Task, path: Path = _DEFAULT_PATH) -> Task:
+    tasks = _load_tasks(path)
+    updated = None
+    for i, t in enumerate(tasks):
+        if t.id == task.id:
+            tasks[i] = Task(id=t.id, title=t.title, completed=True)
+            updated = tasks[i]
+            break
+    if updated is None:
+        raise TaskNotFoundError(f"Task not found: {task.id}")
+    _save_tasks(tasks, path)
+    return updated
+
+
+def delete_task(task: Task, path: Path = _DEFAULT_PATH) -> None:
+    tasks = _load_tasks(path)
+    new_tasks = [t for t in tasks if t.id != task.id]
+    if len(new_tasks) == len(tasks):
+        raise TaskNotFoundError(f"Task not found: {task.id}")
+    _save_tasks(new_tasks, path)

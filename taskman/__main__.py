@@ -1,75 +1,110 @@
 from __future__ import annotations
 
-from typing import Optional
+import argparse
+import sys
 
-import typer
-
-from .storage import add_task, list_tasks
-
-app = typer.Typer(add_completion=False)
+from . import storage
 
 
-@app.command()
-def add(
-    title: str = typer.Argument(..., help="Task title"),
-    description: Optional[str] = typer.Option(None, "--description", help="Optional description"),
-    priority: str = typer.Option(
-        "medium",
-        "--priority",
-        case_sensitive=False,
-        help="Task priority: low|medium|high",
-    ),
-):
-    p = priority.lower()
-    if p not in {"low", "medium", "high"}:
-        raise typer.BadParameter("priority must be one of: low, medium, high")
-
-    task_id = add_task(title=title, description=description, priority=p)
-    typer.echo(f"\u2713 Created task: {task_id[:8]}")
+def _format_task_line(t: storage.Task | object) -> str:
+    # Storage exposes Task model; keep formatting simple.
+    if hasattr(t, "completed") and getattr(t, "completed"):
+        prefix = "[x]"
+    else:
+        prefix = "[ ]"
+    return f"{prefix} {getattr(t, 'id', '')[:8]} {getattr(t, 'title', '')}"
 
 
-@app.command(name="list")
-def list_cmd(
-    all: bool = typer.Option(False, "--all", help="Show all tasks"),
-    completed: bool = typer.Option(False, "--completed", help="Show only completed tasks"),
-    pending: bool = typer.Option(False, "--pending", help="Show only pending tasks"),
-):
-    tasks = list_tasks(show_all=all, completed_only=completed, pending_only=pending)
+def cmd_add(args: argparse.Namespace) -> int:
+    t = storage.add_task(args.title)
+    print(f"Added: {t.title} ({t.id[:8]})")
+    return 0
 
-    headers = ["ID", "Title", "Priority", "Status", "Created"]
-    rows = []
+
+def cmd_list(args: argparse.Namespace) -> int:
+    tasks = storage.list_tasks()
+    if not tasks:
+        print("No tasks.")
+        return 0
     for t in tasks:
-        rows.append(
-            [
-                str(t.get("id", ""))[:8],
-                str(t.get("title", "")),
-                str(t.get("priority", "")),
-                str(t.get("status", "")),
-                str(t.get("created", "")),
-            ]
-        )
-
-    if not rows:
-        typer.echo("No tasks found")
-        return
-
-    widths = [len(h) for h in headers]
-    for r in rows:
-        for i, cell in enumerate(r):
-            widths[i] = max(widths[i], len(cell))
-
-    def fmt_row(parts):
-        return "  ".join(parts[i].ljust(widths[i]) for i in range(len(parts)))
-
-    typer.echo(fmt_row(headers))
-    typer.echo(fmt_row(["-" * w for w in widths]))
-    for r in rows:
-        typer.echo(fmt_row(r))
+        if args.all or not t.completed:
+            print(_format_task_line(t))
+    return 0
 
 
-def main() -> None:
-    app()
+def cmd_complete(args: argparse.Namespace) -> int:
+    try:
+        t = storage.find_by_partial_id(args.task_id)
+    except storage.AmbiguousTaskIdError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 2
+
+    if t is None:
+        print(f"Error: Task not found for id '{args.task_id}'", file=sys.stderr)
+        return 2
+
+    updated = storage.complete_task(t)
+    print(f"✓ Completed: {updated.title}")
+    return 0
+
+
+def _confirm(prompt: str) -> bool:
+    resp = input(prompt).strip().lower()
+    return resp in {"y", "yes"}
+
+
+def cmd_delete(args: argparse.Namespace) -> int:
+    try:
+        t = storage.find_by_partial_id(args.task_id)
+    except storage.AmbiguousTaskIdError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 2
+
+    if t is None:
+        print(f"Error: Task not found for id '{args.task_id}'", file=sys.stderr)
+        return 2
+
+    if not args.force:
+        if not _confirm(f"Delete \"{t.title}\"? [y/N]: "):
+            print("Cancelled.")
+            return 0
+
+    storage.delete_task(t)
+    print(f"✓ Deleted: {t.title}")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="taskman")
+    sub = p.add_subparsers(dest="command", required=True)
+
+    add_p = sub.add_parser("add", help="Add a new task")
+    add_p.add_argument("title", help="Task title")
+    add_p.set_defaults(func=cmd_add)
+
+    list_p = sub.add_parser("list", help="List tasks")
+    list_p.add_argument("--all", action="store_true", help="Include completed tasks")
+    list_p.set_defaults(func=cmd_list)
+
+    complete_p = sub.add_parser("complete", help="Mark a task as completed")
+    complete_p.add_argument("task_id", help="Task id (full or unique prefix)")
+    complete_p.set_defaults(func=cmd_complete)
+
+    delete_p = sub.add_parser("delete", help="Delete a task permanently")
+    delete_p.add_argument("task_id", help="Task id (full or prefix)")
+    delete_p.add_argument(
+        "--force", action="store_true", help="Do not ask for confirmation"
+    )
+    delete_p.set_defaults(func=cmd_delete)
+
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    return int(args.func(args))
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

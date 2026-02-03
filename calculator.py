@@ -11,7 +11,7 @@ class Calculator:
 
     def apowerb(self, a, b):
         """Return a raised to the power of b."""
-        return a ** b
+        return a**b
 
     def multiply(self, a, b):
         """Return the product of a and b."""
